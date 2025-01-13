@@ -257,9 +257,10 @@ bool runGame() {
         std::string level;
         std::string playerName;
         sf::Clock gameClock;
+        float savedTime;
     public:
-        GameInterface(const std::string& playerName)
-            : score(0), lives(max_liczba_zyc), level("1"), playerName(playerName) {
+        GameInterface(float savedTime=0.f)
+            : score(0), lives(max_liczba_zyc), level("1"), playerName("Gracz1"), savedTime(0.f) {
             if (!font.loadFromFile("Arial.ttf")) {
                 return;
             }
@@ -278,6 +279,7 @@ bool runGame() {
             configureText(livesText, 40,"Lives: 5", 250.f, 5.f);
             configureText(playerNameText, 40, "Player: " + playerName, 10.f, float(wys - 45));
             configureText(authorText, 40,"Game by Dominik Slominski", float(szer - 300), float(wys - 45));
+            gameClock.restart();
         }
 
         void configureText(sf::Text& text, int size, const std::string& content, float x, float y) {
@@ -292,16 +294,19 @@ bool runGame() {
         void update() {
             levelText.setString("Level: " + level);
             playerNameText.setString("Player: " + playerName);
-            int elapsedSeconds = static_cast<int>(gameClock.getElapsedTime().asSeconds());
+            int elapsedSeconds = static_cast<int>(savedTime+gameClock.getElapsedTime().asSeconds());
             timeText.setString("Time: " + std::to_string(elapsedSeconds) + "s");
             scoreText.setString("Score: " + std::to_string(score));
             livesText.setString("Lives: " + std::to_string(lives));
         }
         void addScore(int points, sf::Clock clock) {
-            if (clock.getElapsedTime().asSeconds() >= 1.f) {
+            if (clock.getElapsedTime().asSeconds() >= 1.f){
                 score += points;
                 clock.restart();
             }
+        }
+        void setSavedTime(float time) {
+            savedTime = time;
         }
         void set_lives(int liv) {
             lives = liv;
@@ -335,6 +340,25 @@ bool runGame() {
             window.draw(playerNameText);
             window.draw(authorText);
         }
+        // Funkcja zapisuj¹ca stan gry do pliku
+        void save_to_file() const {
+            std::ofstream file("interface.dat", std::ios::binary);
+            if (file.is_open()) {
+                int elapsedSeconds = static_cast<int>(savedTime + gameClock.getElapsedTime().asSeconds());
+                file.write(reinterpret_cast<const char*>(&score), sizeof(score));
+                file.write(reinterpret_cast<const char*>(&level), sizeof(level));
+                file.write(reinterpret_cast<const char*>(&lives), sizeof(lives));
+                file.write(reinterpret_cast<const char*>(&elapsedSeconds), sizeof(elapsedSeconds));
+                size_t nameLength = playerName.size();
+                file.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
+                file.write(playerName.c_str(), nameLength);
+                file.close();
+                std::cout << "zapisano dane interface'u do gry" << std::endl;
+            }
+            else {
+                std::cerr << "Nie mo¿na zapisaæ stanu gry do pliku!" << std::endl;
+            }
+        }
         void save_game_scores() {
 
             //zapis nazwy gracza, poziomu i liczby punktów
@@ -360,65 +384,33 @@ bool runGame() {
             std::cout << "Nazwa gracza " << playerName << "poziom "<<gameLevel<<" liczba punktow " << score << std::endl;
             std::cout << "zapisano wynik gry do pliku" << std::endl;
         }
-        void save_to_file() {
-            //zapis nazwy gracza, poziomu i liczby punktów
-            std::ofstream file("interface.dat", std::ios::binary);
-            if (!file) {
-                std::cerr << "Nie mo¿na otworzyæ pliku do zapisu!" << std::endl;
-                return;
+        void load_from_file(){        // Funkcja wczytuj¹ca stan gry z pliku
+            std::ifstream file("interface.dat", std::ios::binary);
+            if (file.is_open()) {
+                int score_in, lives_in, elapsedSeconds_in;
+                std::string level_in;
+                size_t nameLength;
+                file.read(reinterpret_cast<char*>(&score_in), sizeof(score_in));
+                file.read(reinterpret_cast<char*>(&level_in), sizeof(level_in));
+                file.read(reinterpret_cast<char*>(&lives_in), sizeof(lives_in));
+                file.read(reinterpret_cast<char*>(&elapsedSeconds_in), sizeof(elapsedSeconds_in));
+                file.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
+                std::string playerName_in(nameLength, ' ');
+                file.read(&playerName_in[0], nameLength);
+                file.close();
+                score = score_in;
+                gameLevel = level_in;
+                lives = lives_in;
+                savedTime = static_cast<float>(elapsedSeconds_in);
+                playerName = playerName_in;
             }
-            // Zapisujemy dane
-
-            // Zapis d³ugoœci nazwy gracza i samej nazwy
-            size_t nameLength = playerName.size();
-            file.write(reinterpret_cast<const char*>(&nameLength), sizeof(size_t));
-            file.write(playerName.c_str(), nameLength);
-
-            // Zapis poziomu trudnoœci
-            file.write(reinterpret_cast<const char*>(&gameLevel), sizeof(std::string));
-
-            //zapis liczby ¿yæ
-            file.write(reinterpret_cast<const char*>(&lives), sizeof(int));
-
-            // Zapis liczby punktów
-            file.write(reinterpret_cast<const char*>(&score), sizeof(int));
-
-            file.close();
-            std::cout << "zapisano" << std::endl;
-        }
-        void read_from_file(GameInterface face) {
-            std::string playerName;
-            std::string gameLevel;
-            int score;
-            int lives_in;
-            std::ifstream file("Wyniki.dat", std::ios::binary);
-            if (!file) {
-                std::cerr << "Nie mo¿na otworzyæ pliku do odczytu!" << std::endl;
-                return;
+            else {
+                std::cerr << "Nie mo¿na wczytaæ stanu gry z pliku!" << std::endl;
+                score = 0;
+                lives = 4;
+                savedTime = 0.f;
+                playerName = "Gracz_domyœlny";
             }
-
-            // Odczyt d³ugoœci nazwy gracza i samej nazwy
-            size_t nameLength;
-            file.read(reinterpret_cast<char*>(&nameLength), sizeof(size_t));
-            char* nameBuffer = new char[nameLength + 1]; // Alokacja bufora
-            file.read(nameBuffer, nameLength);
-            nameBuffer[nameLength] = '\0'; // Dodanie terminatora
-            playerName = std::string(nameBuffer);
-            delete[] nameBuffer;
-
-            // Odczyt poziomu trudnoœci
-            file.read(reinterpret_cast<char*>(&gameLevel), sizeof(std::string));
-
-            //odczyt liczby ¿yæ
-            file.read(reinterpret_cast<char*>(&lives_in), sizeof(int));
-
-            // Odczyt liczby punktów
-            file.read(reinterpret_cast<char*>(&score), sizeof(int));
-            file.close();
-            face.set_name(playerName);
-            face.set_level(gameLevel);
-            face.set_lives(lives_in);
-
         }
     };
 
@@ -493,9 +485,10 @@ bool runGame() {
             file.write(reinterpret_cast<const char*>(&position.x), sizeof(float));
             file.write(reinterpret_cast<const char*>(&position.y), sizeof(float));
             file.close();
+            std::cout << "zapisano pozycjê statku" << std::endl;
             std::cout << "zapisano pozycjê " << position.x << " " << position.y << std::endl;
         }
-        void read_from_file(statek st){
+        void read_from_file(){
             sf::Vector2f readPos;
             std::ifstream file("statek.dat", std::ios::binary);
             if (!file) {
@@ -505,8 +498,9 @@ bool runGame() {
             file.read(reinterpret_cast<char*>(&readPos.x), sizeof(float));
             file.read(reinterpret_cast<char*>(&readPos.y), sizeof(float));
             file.close();
-            std::cout << "odczytano pozycjê " << readPos.x << " " << readPos.y << std::endl;
-            st.setPosition(readPos);
+            std::cout << "odczytano pozycjê statku " << readPos.x << " " << readPos.y << std::endl;
+            pSprite.setPosition(readPos);
+            position = readPos;
         }
     };
 
@@ -514,21 +508,18 @@ bool runGame() {
     private:
         sf::Sprite sprite;
         sf::Vector2f velocity;
-        sf::Vector2f position;
         float lastCollisionTime; //czas od ostatniej kolizji
     public:
-        Meteor(const sf::Texture& texture,  float speed): lastCollisionTime(0.f) {
+        Meteor(const sf::Texture& texture,  const sf::Vector2f& position, const sf::Vector2f& velocity): lastCollisionTime(0.f) {
             sprite.setTexture(texture);
             sprite.setScale(skala_meteor, skala_meteor);
-
-            position.x = static_cast<float>(rand() % (szer - static_cast<int>(texture.getSize().x * skala_meteor)));
-            position.y = static_cast<float>(rand() % (wys - int(margines_odbicie) - static_cast<int>(texture.getSize().y * skala_meteor)));
             sprite.setPosition(position);
+            this->velocity = velocity; //ustawienie prêdkoœci wektora private
         }
-        sf::Vector2f generateRandomVelocity(float speed) {
+        sf::Vector2f generateRandomVelocity() {
             float angle = static_cast<float>(rand()) / RAND_MAX * 360.f;
             float radians = angle * 3.14159f / 180.f;
-            return sf::Vector2f(speed * cos(radians), speed * sin(radians));
+            return sf::Vector2f(meteor_speed * cos(radians), meteor_speed * sin(radians));
         }
         bool canCollide(float currentTime) {
             return currentTime - lastCollisionTime >= 1.0f;
@@ -536,8 +527,8 @@ bool runGame() {
         void registerCollision(float currentTime) {
             lastCollisionTime = currentTime;
         }
-        void update(float deltaTime) {
-            position = sprite.getPosition();
+        void update(float deltaTime){
+            sf::Vector2f position = sprite.getPosition();
             sf::FloatRect bounds = sprite.getGlobalBounds();
             sf::Vector2f newPosition = position + velocity * deltaTime;
 
@@ -555,47 +546,14 @@ bool runGame() {
         sf::FloatRect getBounds() const {
             return sprite.getGlobalBounds();
         }
-        
         //ustawianie pozycji
-        void setPosition(sf::Vector2f pos) {
-            position = pos;
+        sf::Vector2f getPosition() const{
+            return sprite.getPosition();
         }
         //ustawianie prêdkoœci meteorytów
-        void setVelocity(sf::Vector2f setVel) {
-            velocity = setVel;
+        sf::Vector2f getVelocity() const{
+            return velocity;
         }
-        void save_to_file() { //zapis prêdkoœci i pozycji meteorytów
-            std::ofstream file("meteor.dat", std::ios::binary);
-            if (!file) {
-                std::cerr << "Nie mo¿na otworzyæ pliku do odczytu!" << std::endl;
-                return;
-            }
-            file.write(reinterpret_cast<const char*>(&position.x), sizeof(float));
-            file.write(reinterpret_cast<const char*>(&position.y), sizeof(float));
-            file.write(reinterpret_cast<const char*>(&velocity.x), sizeof(float));
-            file.write(reinterpret_cast<const char*>(&velocity.y), sizeof(float));
-            
-            file.close();
-            std::cout << "zapisano pozycjê " << position.x << " " << position.y << std::endl;
-        }
-        void read_from_file(Meteor m) { //odczyt pozycji i prêdkoœci meteorytów z pliku
-            sf::Vector2f readPos;
-            sf::Vector2f readVelo;
-            std::ifstream file("meteor.dat", std::ios::binary);
-            if (!file) {
-                std::cerr << "Nie mo¿na otworzyæ pliku do odczytu!" << std::endl;
-                return;
-            }
-            file.read(reinterpret_cast<char*>(&readPos.x), sizeof(float));
-            file.read(reinterpret_cast<char*>(&readPos.y), sizeof(float));
-            file.read(reinterpret_cast<char*>(&readVelo.x), sizeof(float));
-            file.read(reinterpret_cast<char*>(&readVelo.y), sizeof(float));
-            file.close();
-            std::cout << "odczytano pozycjê " << readPos.x << " " << readPos.y << std::endl;
-            m.setPosition(readPos);
-            m.setVelocity(readVelo);
-        }
-        
     };
 
     //napis game over
@@ -626,21 +584,53 @@ bool runGame() {
         //funkcja zapisu gry
         void save_to_file(statek st, std::vector<Meteor> meteors, GameInterface face){
             st.save_to_file();
-            for (auto& meteor : meteors) {
-                meteor.save_to_file();
-            }
-            face.save_game_scores();
-            std::cout << "zapisano" << std::endl;
+            face.save_to_file();
+            std::cout << "zapisano dane interface" << std::endl;
         }
+        void save_meteors_to_file(const std::vector<Meteor>& meteors) {
+            std::ofstream file("meteor.dat", std::ios::binary);
+            if (!file) {
+                std::cerr << "B³¹d zapisu do pliku" << std::endl;
+                return;
+            }
+            for (const auto& meteor : meteors) {
+                sf::Vector2f position = meteor.getPosition();
+                sf::Vector2f velocity = meteor.getVelocity();
+                file.write(reinterpret_cast<const char*>(&position), sizeof(position));
+                file.write(reinterpret_cast<const char*>(&velocity), sizeof(velocity));
+            }
+            file.close();
+            std::cout << "zapisano dane meteorów" << std::endl;
+        }
+
         //funkcja odczytu gry
         void read_from_file(statek st, std::vector<Meteor> meteors, GameInterface face) {
-            st.read_from_file(st); 
-            for (auto& meteor : meteors) {
-                meteor.read_from_file(meteor);
-            }
-            face.read_from_file(face);
-            std::cout << "odczytano" << std::endl;
+            st.read_from_file(); 
+            std::cout << "odczytano dane" << std::endl;
         }
+
+        std::vector<std::pair<sf::Vector2f, sf::Vector2f>> load_meteors_from_file() {
+            std::ifstream file("meteor.dat", std::ios::binary);
+            std::vector<std::pair<sf::Vector2f, sf::Vector2f>> dane_z_pliku;
+
+            if (!file) {
+                std::cout << "Plik nie istnieje" << std::endl;
+                return dane_z_pliku;
+            }
+
+            while (file) {
+                sf::Vector2f position, velocity;
+                file.read(reinterpret_cast<char*>(&position), sizeof(position));
+                file.read(reinterpret_cast<char*>(&velocity), sizeof(velocity));
+                if (file) {
+                    dane_z_pliku.emplace_back(position, velocity);
+                }
+            }
+            file.close();
+            std::cout<<"odczytano dane meteorow"<<std::endl;
+            return dane_z_pliku;
+        }
+
     };
     sf::Clock globalclock; //zegar dla kolizji meteorytów
     sf::Clock gameOverClock; //zegar odpiczaj¹cy czas po koñcu gry
@@ -648,7 +638,6 @@ bool runGame() {
 
     srand(static_cast<unsigned>(time(nullptr)));
     sf::RenderWindow Gamewindow(sf::VideoMode(szer, wys), "Gra");
-    GameInterface gameInterface("Player1");
     save zapis; //deklaracja klasy zapis
 
     GameOverScreen gameOverScreen;
@@ -667,28 +656,39 @@ bool runGame() {
   
     }
     statek st; //dodawanie statku
+    GameInterface gameInterface;
     std::vector<Meteor> meteors;
-    for (int i = 0; i < liczba_meteorytow; ++i) {
-        meteors.emplace_back(tekstura_meteor, meteor_speed); //dodawanie kolejnych meteorów do wektora meteorytów
-    }
     if (newGame){
+        //³adowanie meteorytów i generowanie losowych pozycji i prêdkoœci
+        for (int i = 0; i < liczba_meteorytow; ++i) {
+            sf::Vector2f position(
+                static_cast<float>(rand() % (szer - static_cast<int>(tekstura_meteor.getSize().x * skala_meteor))),
+                static_cast<float>(rand() % (wys - 2 * int(margines_odbicie) - static_cast<int>(tekstura_meteor.getSize().y * skala_meteor)) + margines_odbicie)
+            );
+
+            float angle = static_cast<float>(rand()) / RAND_MAX * 360.f;
+            float radians = angle * 3.14159f / 180.f;
+            sf::Vector2f velocity(meteor_speed * cos(radians), meteor_speed * sin(radians));
+
+            meteors.emplace_back(tekstura_meteor, position, velocity);
+        }
         sf::Vector2f statek_pozycja(szer / 2, wys / 2);
         st.setPosition(statek_pozycja); //ustawienie pozycji pocz¹tkowej statku
         gameInterface.set_level(gameLevel);
         gameInterface.set_name(playerName);
-        for (auto& meteor : meteors) {
-            meteor.setVelocity(meteor.generateRandomVelocity(meteor_speed));
-        }
+        
     }
     else {
-        sf::Vector2f statek_pozycja(szer / 2 + 200, wys / 2 + 200);
-        st.setPosition(statek_pozycja); //ustawienie pozycji pocz¹tkowej statku
-        gameInterface.set_level(gameLevel);
-        gameInterface.set_name(playerName);
-        for (auto& meteor : meteors) {
-            meteor.setVelocity(meteor.generateRandomVelocity(meteor_speed*2));
+        std::cout << "Wczytano grê z pliku" << std::endl;
+        //³adowanie meteorytów z pliku
+        auto savedMeteors = zapis.load_meteors_from_file();
+        for (const auto& data : savedMeteors) {
+            meteors.emplace_back(tekstura_meteor, data.first /*pozycja odczytana*/, data.second/*odczytana prêdkoœæ*/);
         }
-        //zapis.read_from_file(st, meteors, gameInterface);
+        sf::Vector2f statek_pozycja(szer / 2, wys / 2);
+        st.setPosition(statek_pozycja); //ustawienie pozycji pocz¹tkowej statku
+        st.read_from_file();
+        gameInterface.load_from_file();
     }
 
     sf::Clock clock;
@@ -703,7 +703,13 @@ bool runGame() {
                 isPaused = true;
                 std::cout << "pauza" << std::endl;
                 if (okno_Exit(Gamewindow)) {
-                    zapis.save_to_file(st, meteors, gameInterface);
+                    if (!g_over) {
+                        zapis.save_to_file(st, meteors, gameInterface);
+                        zapis.save_meteors_to_file(meteors);
+                    }
+                    else {
+                        gameInterface.save_game_scores();
+                    }
                     Gamewindow.close();
                 }
                 else{
@@ -724,7 +730,13 @@ bool runGame() {
                     std::cout << "pauza" << std::endl;
                     if (okno_Exit(Gamewindow)) {
                         isPaused = false;
-                        zapis.save_to_file(st, meteors, gameInterface);
+                        if (!g_over) {
+                            zapis.save_to_file(st, meteors, gameInterface);
+                            zapis.save_meteors_to_file(meteors);
+                        }
+                        else {
+                            gameInterface.save_game_scores();
+                        }
                         Gamewindow.close();
                     }
                     else {
